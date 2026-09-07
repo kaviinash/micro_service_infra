@@ -1,6 +1,6 @@
 # Resource Group
 resource_group_name     = "rg-aks-demo"
-resource_group_location = "Central India"
+resource_group_location = "East US"
 
 # AKS
 aks_name   = "aks-dev"
