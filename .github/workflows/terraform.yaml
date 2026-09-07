@@ -8,7 +8,9 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch: 
+
+  workflow_dispatch:
+
 permissions:
   id-token: write
   contents: read
@@ -22,6 +24,10 @@ env:
   TF_WORKING_DIR: ./environments/dev
 
 jobs:
+
+  # ============================================================
+  # LINT + SECURITY SCAN
+  # ============================================================
   lint-and-scan:
     name: Lint and Security Scan
     runs-on: ubuntu-latest
@@ -39,29 +45,42 @@ jobs:
           tflint_version: latest
 
       - name: Run TFLint
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
-          cd "${{ env.TF_WORKING_DIR }}"
           tflint --init
           tflint -f compact
 
       - name: Run tfsec
         uses: aquasecurity/tfsec-action@v1.0.3
         with:
-          working_directory: ./environments/dev
+          working_directory: ${{ env.TF_WORKING_DIR }}
           soft_fail: true
 
       - name: Run Checkov
         uses: bridgecrewio/checkov-action@master
         with:
-          directory: ./environments/dev
+          directory: ${{ env.TF_WORKING_DIR }}
           framework: terraform
           soft_fail: true
 
+
+  # ============================================================
+  # TERRAFORM PLAN
+  # Runs for:
+  # - Pull Requests
+  # - Push to main
+  # - Manual workflow_dispatch
+  # ============================================================
   terraform-plan:
     name: Terraform Plan
     needs: lint-and-scan
+
+    if: |
+      github.event_name == 'pull_request' ||
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch'
+
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
 
     steps:
       - name: Checkout
@@ -78,18 +97,34 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        working-directory: ./environments/dev
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
 
       - name: Terraform Plan
-        working-directory: ./environments/dev
-        run: terraform plan -no-color -input=false -var-file=terraform.tfvars
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform plan \
+            -no-color \
+            -input=false \
+            -var-file=terraform.tfvars
 
+
+  # ============================================================
+  # TERRAFORM APPLY
+  # ONLY runs after:
+  # lint-and-scan -> terraform-plan
+  #
+  # Apply happens ONLY on push to main
+  # ============================================================
   terraform-apply:
     name: Terraform Apply
-    needs: lint-and-scan
+    needs: terraform-plan
+
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
+
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout
@@ -106,9 +141,13 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        working-directory: ./environments/dev
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
 
       - name: Terraform Apply
-        working-directory: ./environments/dev
-        run: terraform apply -auto-approve -input=false -var-file=terraform.tfvars
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform apply \
+            -auto-approve \
+            -input=false \
+            -var-file=terraform.tfvars
