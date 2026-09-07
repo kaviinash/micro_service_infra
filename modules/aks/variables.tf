@@ -29,5 +29,5 @@ variable "vm_size" {
   type        = string
   description = "VM size for AKS nodes"
 
-  default = "Standard_DS2_v2"
+  default = "Standard_B2s"
 }
