@@ -66,10 +66,6 @@ jobs:
 
   # ============================================================
   # TERRAFORM PLAN
-  # Runs for:
-  # - Pull Requests
-  # - Push to main
-  # - Manual workflow_dispatch
   # ============================================================
   terraform-plan:
     name: Terraform Plan
@@ -111,10 +107,8 @@ jobs:
 
   # ============================================================
   # TERRAFORM APPLY
-  # ONLY runs after:
-  # lint-and-scan -> terraform-plan
-  #
-  # Apply happens ONLY on push to main
+  # ONLY runs after successful terraform-plan
+  # ONLY runs on push to main
   # ============================================================
   terraform-apply:
     name: Terraform Apply
@@ -122,7 +116,8 @@ jobs:
 
     if: |
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/main'
+      github.ref == 'refs/heads/main' &&
+      needs.terraform-plan.result == 'success'
 
     runs-on: ubuntu-latest
 
