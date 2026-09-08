@@ -1,148 +1,35 @@
-name: Terraform CI/CD
+terraform-apply:
+  name: Terraform Apply
+  needs: terraform-plan
 
-on:
-  push:
-    branches:
-      - main
+  if: |
+    (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+    github.event_name == 'workflow_dispatch'
 
-  pull_request:
-    branches:
-      - main
+  runs-on: ubuntu-latest
 
-  workflow_dispatch:
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
 
-permissions:
-  id-token: write
-  contents: read
-  pull-requests: write
+    - name: Azure Login using OIDC
+      uses: azure/login@v2
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-env:
-  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-  ARM_USE_OIDC: true
-  TF_WORKING_DIR: ./environments/dev
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
 
-jobs:
+    - name: Terraform Init
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: terraform init
 
-  # ============================================================
-  # LINT + SECURITY SCAN
-  # ============================================================
-  lint-and-scan:
-    name: Lint and Security Scan
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v4
-        with:
-          tflint_version: latest
-
-      - name: Run TFLint
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          tflint --init
-          tflint -f compact
-
-      - name: Run tfsec
-        uses: aquasecurity/tfsec-action@v1.0.3
-        with:
-          working_directory: ${{ env.TF_WORKING_DIR }}
-          soft_fail: true
-
-      - name: Run Checkov
-        uses: bridgecrewio/checkov-action@master
-        with:
-          directory: ${{ env.TF_WORKING_DIR }}
-          framework: terraform
-          soft_fail: true
-
-
-  # ============================================================
-  # TERRAFORM PLAN
-  # ============================================================
-  terraform-plan:
-    name: Terraform Plan
-    needs: lint-and-scan
-
-    if: |
-      github.event_name == 'pull_request' ||
-      github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch'
-
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Azure Login using OIDC
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform init
-
-      - name: Terraform Plan
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform plan \
-            -no-color \
-            -input=false \
-            -var-file=terraform.tfvars
-
-
-  # ============================================================
-  # TERRAFORM APPLY
-  # ONLY runs after successful terraform-plan
-  # ONLY runs on push to main
-  # ============================================================
-  terraform-apply:
-    name: Terraform Apply
-    needs: terraform-plan
-
-    if: |
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      needs.terraform-plan.result == 'success'
-
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Azure Login using OIDC
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform init
-
-      - name: Terraform Apply
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform apply \
-            -auto-approve \
-            -input=false \
-            -var-file=terraform.tfvars
+    - name: Terraform Apply
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        terraform apply \
+          -auto-approve \
+          -input=false \
+          -var-file=terraform.tfvars
